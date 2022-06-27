@@ -1,0 +1,6 @@
+This is the test file to demonstrate successful use of timelock. Use the parameters:
+
+A: I'm watching a dream I'll never wake up from.
+T: 10
+
+You will get an output file that you can decrypt using the above info and then the provided parameters.
