@@ -25,7 +25,19 @@ namespace Timelock
                     var t = Console.ReadLine() ??
                         throw new ArgumentException("T must not be null");
 
-                    EncryptFile(args[1], args[2], a, t);
+                    EncryptFile(args[1], args[2], a, t, false);
+                    break;
+                }
+                case "disclose-encrypt":
+                {
+                    Console.Write("Enter the A value: ");
+                    var a = Console.ReadLine() ??
+                        throw new ArgumentException("A must not be null");
+                    Console.Write("Enter the T value: ");
+                    var t = Console.ReadLine() ??
+                        throw new ArgumentException("T must not be null");
+
+                    EncryptFile(args[1], args[2], a, t, true);
                     break;
                 }
                 case "decrypt":
@@ -46,14 +58,47 @@ namespace Timelock
                     DecryptFile(args[1], args[2], a, ck, t, modulus);
                     break;
                 }
+                case "fast-decrypt":
+                {
+                    Console.Write("Enter the A value: ");
+                    var a = Console.ReadLine() ??
+                        throw new ArgumentException("A must not be null");
+                    Console.Write("Enter the CK value: ");
+                    var ck = Console.ReadLine() ??
+                        throw new ArgumentException("CK must not be null");
+                    Console.Write("Enter the T value: ");
+                    var t = Console.ReadLine() ??
+                        throw new ArgumentException("T must not be null");
+                    Console.Write("Enter the Modulus value: ");
+                    var modulus = Console.ReadLine() ??
+                        throw new ArgumentException("Modulus must not be null");
+                    Console.Write("Enter the P value: ");
+                    var p = Console.ReadLine() ??
+                        throw new ArgumentException("P must not be null");
+                    Console.Write("Enter the Q value: ");
+                    var q = Console.ReadLine() ??
+                        throw new ArgumentException("Q must not be null");
+
+                    DecryptFile(args[1], args[2], a, ck, t, modulus, p, q);
+                    break;
+                }
                 default:
                 {
                     // I'll break my rule, this one time, for the road.
                     Console.WriteLine("timelock - simple timelock-based encryption tool");
                     Console.WriteLine("\ttimelock encrypt <input filename> <output filename>");
-                    Console.WriteLine("\t\t encrypts a file, asks for public variables via STDIN, produces all public variables to distribute to STDOUT.");
+                    Console.WriteLine("\t\t encrypts a file, asks for public variables via STDIN, produces");
+                    Console.WriteLine("\t\t all public variables to distribute to STDOUT.");
+                    Console.WriteLine("\ttimelock disclose-encrypt <input filename> <output filename>");
+                    Console.WriteLine("\t\t encrypts a file, asks for public variables via STDIN, produces");
+                    Console.WriteLine("\t\t all public variables to distribute to STDOUT, and includes P ");
+                    Console.WriteLine("\t\t and Q values, to be provided for fast decryption disclosure");
+                    Console.WriteLine("\t\t purposes to shortcut the timelock.");
                     Console.WriteLine("\ttimelock decrypt <input filename> <output filename>");
                     Console.WriteLine("\t\t decrypts a file, asks for public variables via STDIN.");
+                    Console.WriteLine("\ttimelock fast-decrypt <input filename> <output filename>");
+                    Console.WriteLine("\t\t decrypts a file quickly, asks for public variables via STDIN.");
+                    Console.WriteLine("\t\t Used with disclose-encrypt.");
                     break;
                 }
             }
@@ -63,7 +108,8 @@ namespace Timelock
             string inputFile,
             string outputFile,
             string preA,
-            string t)
+            string t,
+            bool disclose)
         {
             var generator = new RsaKeyPairGenerator();
             var defaultPublicExponent = BigInteger.ValueOf(0x10001);
@@ -76,6 +122,15 @@ namespace Timelock
             generator.Init(param);
             var pair = generator.GenerateKeyPair();
             var privKey = pair.Private as RsaPrivateCrtKeyParameters;
+            
+            if (disclose)
+            {
+                Console.Write("P: ");
+                Console.WriteLine(privKey!.P.ToString());
+                Console.Write("Q: ");
+                Console.WriteLine(privKey.Q.ToString());
+            }
+
             Console.Write("Modulus: ");
             Console.WriteLine(privKey!.Modulus.ToString());
 
@@ -131,7 +186,9 @@ namespace Timelock
             string preA,
             string ck,
             string t,
-            string modulus)
+            string modulus,
+            string? p = null,
+            string? q = null)
         {
             var digest = new Sha3Digest();
             var message = Encoding.UTF8.GetBytes(preA);
@@ -143,12 +200,24 @@ namespace Timelock
             var a = new BigInteger(1, hash);
             var mod = new BigInteger(modulus);
 
-            for (
-                var i = BigInteger.Zero;
-                i.CompareTo(new BigInteger(t)) < 0;
-                i = i.Add(BigInteger.One))
+            if (!string.IsNullOrWhiteSpace(p) && !string.IsNullOrWhiteSpace(q))
             {
-                a = a.ModPow(BigInteger.Two, mod);
+                a = a.ModPow(
+                    BigInteger.Two.ModPow(
+                        new BigInteger(t),
+                        (new BigInteger(p).Subtract(BigInteger.One).Multiply(
+                            new BigInteger(q).Subtract(BigInteger.One)))
+                    ), mod);
+            }
+            else
+            {
+                for (
+                    var i = BigInteger.Zero;
+                    i.CompareTo(new BigInteger(t)) < 0;
+                    i = i.Add(BigInteger.One))
+                {
+                    a = a.ModPow(BigInteger.Two, mod);
+                }
             }
 
             var deckey = new BigInteger(ck).Subtract(a).Mod(mod);
